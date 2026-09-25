@@ -1,0 +1,11 @@
+{
+  "name": "Morning Report Hub",
+  "short_name": "Morning Hub",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f4ef",
+  "theme_color": "#234e44",
+  "icons": [{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any"}]
+}

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#234e44">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; worker-src 'self'; manifest-src 'self'">
+  <title>Morning Report Hub</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23234e44'/%3E%3Cpath d='M7 22a9 9 0 0 1 18 0M5 25h22' fill='none' stroke='%23f2d59c' stroke-width='3'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="masthead"><span class="sun" aria-hidden="true">◒</span><div><p class="eyebrow">毎朝を、ひとつの入力から。</p><h1>Morning Report Hub</h1></div><span class="version">0.1</span></header>
+    <p class="privacy">記録はこのブラウザ内に保存されます<br><span id="offline-state">ローカルファイル、またはHTTPSで利用できます</span></p>
+    <nav aria-label="メイン"><button type="button" data-view="morning" aria-current="page">朝の入力</button><button type="button" data-view="history">体重履歴</button><button type="button" data-view="settings">設定</button></nav>
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+    <main>
+      <section id="morning" aria-label="朝の入力">
+        <div class="intro"><h2>おはようございます</h2><p>一度入力して、3つのChatへ。</p></div>
+        <button type="button" id="resume-draft" class="secondary full" hidden>前回の入力途中を再開</button>
+        <form id="morning-form" novalidate>
+          <section class="card"><div class="section-title"><span>01</span><h2>朝の基本情報</h2></div>
+            <div class="pair"><label>日付 <span class="required">必須</span><input id="date" name="date" type="text" inputmode="numeric" maxlength="10" aria-describedby="date-hint" required><small id="date-hint">YYYY/MM/DD（端末の日付）</small></label><label>体重 <span class="required">必須</span><span class="unit-input"><input name="weight" type="number" inputmode="decimal" min="1" max="500" step="0.01" required><span>kg</span></span></label></div>
+            <p id="record-state" class="hint"></p>
+            <button id="load-day" type="button" class="secondary" hidden>この日の保存済み記録を読み込む</button>
+            <div class="field"><h3>睡眠</h3><div class="sleep-row"><span>主睡眠</span><label><input name="sleepH" type="number" inputmode="numeric" min="0" max="24" step="1" aria-label="主睡眠 時間">時間</label><label><input name="sleepM" type="number" inputmode="numeric" min="0" max="59" step="1" aria-label="主睡眠 分">分</label></div><div class="sleep-row"><span>追加 <small>任意</small></span><label><input name="extraH" type="number" inputmode="numeric" min="0" max="24" step="1" aria-label="追加睡眠 時間">時間</label><label><input name="extraM" type="number" inputmode="numeric" min="0" max="59" step="1" aria-label="追加睡眠 分">分</label></div><p id="sleep-total" class="hint" aria-live="polite"></p></div>
+            <div id="basic-choices"></div>
+            <div id="alcohol-detail" hidden><label>前日の飲酒の杯数<input name="drinks" type="number" inputmode="decimal" min="0.5" max="100" step="0.5"></label></div>
+            <label class="field">その他の体調 <small>任意</small><textarea name="otherHealth" rows="2" maxlength="3000"></textarea></label>
+            <button type="button" id="all-well" class="shortcut">✓ 体調系を問題なしに設定</button><p class="hint">体調・食欲・飲酒・筋肉痛・痛み・腰を設定。体重・睡眠・疲労・自由記述は変更しません。</p>
+          </section>
+          <section class="card"><div class="section-title"><span>02</span><h2>筋肉・痛み</h2></div><div class="row-between"><h3>筋肉痛 <small>0〜10</small></h3><button type="button" id="no-soreness" class="secondary compact">筋肉痛なし</button></div><div id="muscles" class="muscle-grid"></div><p class="hint">未選択は未記録です。0には置き換えません。</p><div id="pain-choices"></div><div id="pain-detail" class="inset" hidden><label>痛みの部位<input name="painPlace" maxlength="200"></label><label>痛み（0〜10）<input name="painLevel" type="number" inputmode="numeric" min="0" max="10" step="1"></label></div><div id="back-choices"></div><div id="back-detail" class="inset" hidden><label>違和感がある動作<input name="backAction" maxlength="200"></label><label>場所<input name="backPlace" maxlength="200"></label><label>違和感（0〜10）<input name="backLevel" type="number" inputmode="numeric" min="0" max="10" step="1"></label></div></section>
+          <section class="card"><div class="section-title"><span>03</span><h2>今日の予定</h2></div><label>トレーニング可能時間<span class="unit-input"><input name="trainingMinutes" type="number" inputmode="numeric" min="0" max="1440" step="1"><span>分</span></span></label><div id="time-choices"></div><label>特記事項 <small>任意</small><textarea name="trainingNote" rows="2" maxlength="3000"></textarea></label></section>
+          <details class="card"><summary><span class="section-title"><span>04</span><span class="summary-title">食事予定 <small>すべて任意</small></span></span></summary><p class="hint">決まっている項目だけで大丈夫です。選択済みのボタンをもう一度押すと解除できます。</p><div id="breakfast-choices"></div><label>朝食の内容<textarea name="breakfastText" rows="2" maxlength="3000"></textarea></label><div id="lunch-choices"></div><label>昼食の内容<textarea name="lunchText" rows="2" maxlength="3000"></textarea></label><div id="dinner-choices"></div><label>夕食の内容<textarea name="dinnerText" rows="2" maxlength="3000"></textarea></label><div id="dinner-alcohol-choices" hidden></div><div class="pair field"><label>退社予定時刻<input name="leaveTime" type="time"></label><label>夕食予定時刻<input name="dinnerTime" type="time"></label></div><div id="hunger-choices"></div><div id="snack-choices"></div></details>
+          <section class="card"><div class="section-title"><span>05</span><h2>レポート生成</h2></div><p class="hint">生成すると、この日付の記録を保存します。同じ日付は確認後に更新します。</p><button type="submit" class="primary full">朝レポートを生成</button><button type="button" id="save-day" class="secondary full">記録だけ保存</button><p id="draft-state" class="hint" aria-live="polite">入力途中もこのブラウザに保存されます。</p><button type="button" id="clear-form" class="text-button full">入力フォームだけクリア</button><button type="button" id="delete-day" class="text-button danger full">この日の記録を削除</button></section>
+        </form>
+        <section id="results" aria-label="生成されたレポート" hidden><h2 tabindex="-1" id="results-heading">今日のレポート</h2><p class="hint">コピーして、ChatGPTの各Chatに貼り付けてください。</p><div id="report-cards"></div></section>
+      </section>
+      <section id="history" hidden aria-label="体重履歴"><div class="intro"><h2>体重履歴</h2><p>過去の記録は、日付と体重だけで。</p></div><section class="card"><h3>体重を追加・編集</h3><form id="history-form" novalidate><div class="pair"><label>日付<input name="historyDate" type="text" inputmode="numeric" maxlength="10" aria-label="履歴の日付 YYYY/MM/DD"><small>YYYY/MM/DD</small></label><label>体重（kg）<input name="historyWeight" type="number" inputmode="decimal" min="1" max="500" step="0.01"></label></div><button class="primary full" type="submit">体重を保存</button></form><p class="hint">同じ日付は体重のみ更新し、保存済みの体調などは保持します。</p></section><section class="card"><h3>週平均</h3><p id="average-reference" class="hint"></p><div id="averages"></div></section><section class="card"><h3>保存済みの記録</h3><div id="history-list"></div></section></section>
+      <section id="settings" hidden aria-label="設定"><div class="intro"><h2>設定</h2><p>依頼文とバックアップを管理。</p></div><section class="card"><form id="settings-form"><label>コーチChatへの固定依頼文 <small>任意</small><textarea name="coachRequest" rows="5" maxlength="10000"></textarea></label><label class="field">食事管理Chatへの固定依頼文 <small>任意</small><textarea name="foodRequest" rows="5" maxlength="10000"></textarea></label><button type="submit" class="primary full">固定依頼文を保存</button></form></section><section class="card"><h3>バックアップ</h3><p class="hint">全記録・固定依頼文・入力途中の内容をJSONファイルに保存します。ファイルには個人データが含まれるため、ご自身で安全に保管してください。</p><button type="button" id="export" class="secondary full">バックアップを書き出す</button><label class="field">バックアップを読み込む<input type="file" id="import" accept=".json,application/json"></label><p class="hint">読み込み前に内容の件数を確認できます。復元すると現在の全記録・設定を置き換えます。</p></section><section class="card"><h3>保存について</h3><p class="hint">保存先は、この端末・ブラウザ・URL専用のlocalStorageです。別端末には同期されません。ブラウザのデータ削除やプライベートモードでは記録が消えることがあります。</p><p class="hint">アプリから外部へ記録を送信する機能はありません。ChatGPTへの貼り付けは、ご自身で行ってください。</p></section><section class="card danger-zone"><h3>データの全削除</h3><p class="hint">このアプリの全記録・設定・入力途中の内容を削除します。元に戻せません。</p><button type="button" id="delete-all" class="secondary danger full">すべてのデータを削除</button></section></section>
+    </main><footer>Morning Report Hub <span>Ver.0.1 · 端末内保存</span></footer>
+  </div><div id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

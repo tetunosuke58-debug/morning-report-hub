@@ -1,4 +1,4 @@
-/* Morning Report Hub — external dependencies / network requests: none. */
+/* Morning Report Hub core. Local storage remains authoritative; Drive is optional. */
 (() => {
   'use strict';
   const KEY = 'morning-report-hub.v1';
@@ -136,20 +136,39 @@
     next.draftDay = raw.draftDay || '';
     return next;
   }
+  // Check without rewriting records/settings. Drive must not normalize existing data.
+  function validateSyncPayload(raw) {
+    const object = v => v && typeof v === 'object' && !Array.isArray(v);
+    if (!object(raw) || Object.keys(raw).some(k=>!['version','records','settings'].includes(k)) ||
+        !object(raw.records) || !object(raw.settings) ||
+        Object.keys(raw.settings).some(k=>!['coachRequest','foodRequest'].includes(k))) throw new Error('同期データの形式が正しくありません。');
+    for (const r of Object.values(raw.records)) if (!object(r) || Object.keys(r).some(k=>!FIELDS.includes(k))) throw new Error('未対応の記録項目があります。');
+    validateBackup({...raw,draft:null,draftDay:''});
+    return JSON.parse(JSON.stringify(raw));
+  }
   // Data and text functions can be tested without a browser or persistent records.
-  if (typeof module !== 'undefined' && module.exports) module.exports = {cleanRecord,dateKey,parseDate,sleepText,weekStats,generateReports,validateBackup,emptyDB};
+  if (typeof module !== 'undefined' && module.exports) module.exports = {cleanRecord,dateKey,parseDate,sleepText,weekStats,generateReports,validateBackup,validateSyncPayload,emptyDB};
   if (typeof document === 'undefined') return;
 
   const $ = id => document.getElementById(id), form = $('morning-form');
-  let db = emptyDB(), storageBlocked = false, toastTimer;
+  let db = emptyDB(), storageBlocked = false, toastTimer, driveSync = null, lastStoredRaw = null;
   function notify(message) { $('notice').textContent = message; $('notice').hidden = false; $('notice').scrollIntoView({block:'nearest'}); }
   function toast(message) { $('toast').textContent=message; $('toast').hidden=false; clearTimeout(toastTimer); toastTimer=setTimeout(()=>$('toast').hidden=true,2600); }
-  function commit(next) {
-    if(storageBlocked) throw new Error('保存済みデータを読み込めないため上書きを停止しています。設定から有効なバックアップを復元するか、全削除してください。');
-    try { localStorage.setItem(KEY,JSON.stringify(next)); } catch { throw new Error('保存できませんでした。ブラウザの保存許可・空き容量を確認してください。入力は画面に残っています。'); }
-    db = next;
+  function assertCurrentStorage() {
+    if (storageBlocked || localStorage.getItem(KEY) !== lastStoredRaw) throw new Error('保存データの変更または読み込みエラーを検出しました。上書きを止めています。ページを再読み込みしてください。');
   }
-  try { const raw=localStorage.getItem(KEY); if(raw) db=validateBackup(JSON.parse(raw)); }
+  function commit(next, fromDrive = false) {
+    if(storageBlocked) throw new Error('保存済みデータを読み込めないため上書きを停止しています。設定から有効なバックアップを復元するか、全削除してください。');
+    assertCurrentStorage();
+    const syncableChanged = JSON.stringify([db.version,db.records,db.settings]) !== JSON.stringify([next.version,next.records,next.settings]);
+    const serialized = JSON.stringify(next);
+    try { localStorage.setItem(KEY,serialized); } catch { throw new Error('保存できませんでした。ブラウザの保存許可・空き容量を確認してください。入力は画面に残っています。'); }
+    lastStoredRaw = serialized;
+    db = next;
+    // A Drive failure never turns a successful local save into a failed save.
+    if (syncableChanged && !fromDrive) { try { driveSync?.onLocalSyncableChange(); } catch { /* Local save already succeeded. */ } }
+  }
+  try { lastStoredRaw=localStorage.getItem(KEY); if(lastStoredRaw) {const parsed=JSON.parse(lastStoredRaw);validateBackup(parsed);db={...emptyDB(),...parsed};} }
   catch { storageBlocked=true; notify('保存データを読み込めませんでした。既存データを保護するため上書きを停止しました。バックアップの復元、または設定の全削除を利用してください。'); }
   function choice(target,key,label,hint='') {
     const fieldset=document.createElement('fieldset'), legend=document.createElement('legend'), hidden=document.createElement('input'), buttons=document.createElement('div');
@@ -287,11 +306,28 @@
   $('delete-all').addEventListener('click',()=>{
     if(!confirm('このアプリの全記録・設定・入力途中を削除しますか？'))return;
     if(!confirm('最終確認：削除すると元に戻せません。本当にすべて削除しますか？'))return;
-    try{localStorage.removeItem(KEY);db=emptyDB();storageBlocked=false;fillForm(null);fillSettings();$('history-form').reset();$('history-form').elements.historyDate.value=dateKey();invalidate();renderHistory();$('notice').hidden=true;$('draft-state').textContent='入力途中もこのブラウザに保存されます。';toast('すべてのデータを削除しました');}catch{notify('削除できませんでした。ブラウザの保存設定を確認してください。');}
+    try{driveSync?.disconnect();localStorage.removeItem(KEY);lastStoredRaw=null;db=emptyDB();storageBlocked=false;fillForm(null);fillSettings();$('history-form').reset();$('history-form').elements.historyDate.value=dateKey();invalidate();renderHistory();$('notice').hidden=true;$('draft-state').textContent='入力途中もこのブラウザに保存されます。';toast('この端末の記録・設定を削除しました。Driveと安全コピーは削除していません。');}catch{notify('削除できませんでした。ブラウザの保存設定を確認してください。');}
   });
   // Avoid silently overwriting changes from another open tab.
   window.addEventListener('storage',e=>{if(e.key===KEY || e.key===null){storageBlocked=true;invalidate();notify('別のタブで記録が変更されました。この画面からの保存を停止しています。ページを再読み込みしてください。');}});
   fillForm(db.draftDay===dateKey()?db.draft:null);fillSettings();$('history-form').elements.historyDate.value=dateKey();
+  function getSyncPayload() {
+    assertCurrentStorage();
+    return validateSyncPayload({version:db.version,records:db.records,settings:db.settings});
+  }
+  function applyRemoteSyncPayload(payload, expectedCanonical) {
+    const valid=validateSyncPayload(payload);
+    if (window.MRHDrive.canonicalJSON(getSyncPayload()) !== expectedCanonical) throw new Error('同期中に端末の記録が変わりました。上書きせず停止しました。もう一度同期してください。');
+    const settingsBeingEdited=['coachRequest','foodRequest'].some(key=>$('settings-form').elements[key].value!==db.settings[key]);
+    // Keep this device's current draft, draftDay and any local-only top-level values.
+    commit({...db,version:valid.version,records:valid.records,settings:valid.settings},true);
+    invalidate();syncUI();renderHistory();if(!settingsBeingEdited)fillSettings();
+    toast('Driveの記録を反映しました。朝の入力途中は保持しています');
+  }
+  try {
+    driveSync=window.MRHDrive?.mount({getSyncPayload,applyRemoteSyncPayload,validateSyncPayload,
+      getLocalBackup:()=>{assertCurrentStorage();return JSON.parse(JSON.stringify(db));}});
+  } catch { const state=$('drive-status');if(state)state.textContent='同期機能を準備できませんでした。端末内の機能は使えます。'; }
   // Cache only the static application. Personal data never goes into requests or caches.
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     navigator.serviceWorker.register('./sw.js').then(()=>navigator.serviceWorker.ready).then(()=>{

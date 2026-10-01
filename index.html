@@ -5,16 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#234e44">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; worker-src 'self'; manifest-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' https://accounts.google.com/gsi/style; img-src 'self' data:; connect-src https://accounts.google.com/gsi/ https://www.googleapis.com/drive/v3/ https://www.googleapis.com/upload/drive/v3/; frame-src https://accounts.google.com/gsi/; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; worker-src 'self'; manifest-src 'self'">
   <title>Morning Report Hub</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23234e44'/%3E%3Cpath d='M7 22a9 9 0 0 1 18 0M5 25h22' fill='none' stroke='%23f2d59c' stroke-width='3'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
   <link rel="manifest" href="manifest.webmanifest">
+  <script src="config.js" defer></script>
+  <script src="google-drive-sync.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
   <div class="shell">
-    <header class="masthead"><span class="sun" aria-hidden="true">◒</span><div><p class="eyebrow">毎朝を、ひとつの入力から。</p><h1>Morning Report Hub</h1></div><span class="version">0.1</span></header>
+    <header class="masthead"><span class="sun" aria-hidden="true">◒</span><div><p class="eyebrow">毎朝を、ひとつの入力から。</p><h1>Morning Report Hub</h1></div><span class="version">0.2</span></header>
     <p class="privacy">記録はこのブラウザ内に保存されます<br><span id="offline-state">ローカルファイル、またはHTTPSで利用できます</span></p>
     <nav aria-label="メイン"><button type="button" data-view="morning" aria-current="page">朝の入力</button><button type="button" data-view="history">体重履歴</button><button type="button" data-view="settings">設定</button></nav>
     <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
@@ -41,8 +43,32 @@
         <section id="results" aria-label="生成されたレポート" hidden><h2 tabindex="-1" id="results-heading">今日のレポート</h2><p class="hint">コピーして、ChatGPTの各Chatに貼り付けてください。</p><div id="report-cards"></div></section>
       </section>
       <section id="history" hidden aria-label="体重履歴"><div class="intro"><h2>体重履歴</h2><p>過去の記録は、日付と体重だけで。</p></div><section class="card"><h3>体重を追加・編集</h3><form id="history-form" novalidate><div class="pair"><label>日付<input name="historyDate" type="text" inputmode="numeric" maxlength="10" aria-label="履歴の日付 YYYY/MM/DD"><small>YYYY/MM/DD</small></label><label>体重（kg）<input name="historyWeight" type="number" inputmode="decimal" min="1" max="500" step="0.01"></label></div><button class="primary full" type="submit">体重を保存</button></form><p class="hint">同じ日付は体重のみ更新し、保存済みの体調などは保持します。</p></section><section class="card"><h3>週平均</h3><p id="average-reference" class="hint"></p><div id="averages"></div></section><section class="card"><h3>保存済みの記録</h3><div id="history-list"></div></section></section>
-      <section id="settings" hidden aria-label="設定"><div class="intro"><h2>設定</h2><p>依頼文とバックアップを管理。</p></div><section class="card"><form id="settings-form"><label>コーチChatへの固定依頼文 <small>任意</small><textarea name="coachRequest" rows="5" maxlength="10000"></textarea></label><label class="field">食事管理Chatへの固定依頼文 <small>任意</small><textarea name="foodRequest" rows="5" maxlength="10000"></textarea></label><button type="submit" class="primary full">固定依頼文を保存</button></form></section><section class="card"><h3>バックアップ</h3><p class="hint">全記録・固定依頼文・入力途中の内容をJSONファイルに保存します。ファイルには個人データが含まれるため、ご自身で安全に保管してください。</p><button type="button" id="export" class="secondary full">バックアップを書き出す</button><label class="field">バックアップを読み込む<input type="file" id="import" accept=".json,application/json"></label><p class="hint">読み込み前に内容の件数を確認できます。復元すると現在の全記録・設定を置き換えます。</p></section><section class="card"><h3>保存について</h3><p class="hint">保存先は、この端末・ブラウザ・URL専用のlocalStorageです。別端末には同期されません。ブラウザのデータ削除やプライベートモードでは記録が消えることがあります。</p><p class="hint">アプリから外部へ記録を送信する機能はありません。ChatGPTへの貼り付けは、ご自身で行ってください。</p></section><section class="card danger-zone"><h3>データの全削除</h3><p class="hint">このアプリの全記録・設定・入力途中の内容を削除します。元に戻せません。</p><button type="button" id="delete-all" class="secondary danger full">すべてのデータを削除</button></section></section>
-    </main><footer>Morning Report Hub <span>Ver.0.1 · 端末内保存</span></footer>
+      <section id="settings" hidden aria-label="設定"><div class="intro"><h2>設定</h2><p>依頼文とバックアップを管理。</p></div><section class="card" id="drive-section" aria-labelledby="drive-heading">
+  <h3 id="drive-heading">Google Drive同期</h3>
+  <p class="hint">普段の保存先はこの端末です。接続を許可すると、記録と固定依頼文だけをGoogle Driveのアプリ専用領域に同期します。入力途中は送りません。</p>
+  <p id="drive-status" class="sync-status" role="status" aria-live="polite">未接続です。端末内保存は利用できます。</p>
+  <p id="drive-last-sync" class="hint">最終同期：まだありません</p>
+  <button type="button" id="drive-connect" class="primary full">Google Driveに接続</button>
+  <button type="button" id="drive-now" class="secondary full">今すぐ同期</button>
+  <button type="button" id="drive-disconnect" class="text-button full">Google Drive接続を解除</button>
+  <p class="hint">接続解除で記録は消えません。上書きが必要な競合では、使用するデータを選んでから再確認します。</p>
+  <details class="sync-safety">
+    <summary>上書き前の安全コピー</summary>
+    <p id="drive-safety-count" class="hint"></p>
+    <label>書き出すコピー<select id="drive-safety-select" aria-label="安全コピーの選択"></select></label>
+    <button type="button" id="drive-safety-export" class="secondary full">安全コピーを書き出す</button>
+    <p class="hint">JSONとして書き出し、既存のバックアップ読み込みで復元できます。自動削除はしません。必要なコピーを書き出した後に整理してください。</p>
+    <button type="button" id="drive-safety-clear" class="text-button danger full">安全コピーだけを削除</button>
+  </details>
+</section><section class="card"><form id="settings-form"><label>コーチChatへの固定依頼文 <small>任意</small><textarea name="coachRequest" rows="5" maxlength="10000"></textarea></label><label class="field">食事管理Chatへの固定依頼文 <small>任意</small><textarea name="foodRequest" rows="5" maxlength="10000"></textarea></label><button type="submit" class="primary full">固定依頼文を保存</button></form></section><section class="card"><h3>バックアップ</h3><p class="hint">全記録・固定依頼文・入力途中の内容をJSONファイルに保存します。ファイルには個人データが含まれるため、ご自身で安全に保管してください。</p><button type="button" id="export" class="secondary full">バックアップを書き出す</button><label class="field">バックアップを読み込む<input type="file" id="import" accept=".json,application/json"></label><p class="hint">読み込み前に内容の件数を確認できます。復元すると現在の全記録・設定を置き換えます。</p></section><section class="card"><h3>保存について</h3><p class="hint">保存先は、この端末・ブラウザ・URL専用のlocalStorageです。Drive未接続時は別端末には同期されません。ブラウザのデータ削除やプライベートモードでは記録が消えることがあります。</p><p class="hint">Google Driveへ接続した場合だけ、記録と固定依頼文を同期します。ChatGPTへの貼り付けは、ご自身で行ってください。</p></section><section class="card danger-zone"><h3>データの全削除</h3><p class="hint">この端末の記録・設定・入力途中を削除し、Drive接続を解除します。Drive上の記録と安全コピーは残ります。元に戻すにはバックアップが必要です。</p><button type="button" id="delete-all" class="secondary danger full">すべてのデータを削除</button></section></section>
+    </main><footer>Morning Report Hub <span>Ver.0.2 · 端末内保存</span></footer>
   </div><div id="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="drive-conflict" aria-labelledby="drive-conflict-title">
+    <h2 id="drive-conflict-title">同期するデータの選択</h2>
+    <p id="drive-conflict-detail"></p>
+    <button type="button" id="drive-use-local" class="secondary full">この端末のデータを使用</button>
+    <button type="button" id="drive-use-remote" class="secondary full">Google Driveのデータを使用</button>
+    <button type="button" id="drive-conflict-cancel" class="primary full" autofocus>キャンセル</button>
+  </dialog>
 </body>
 </html>
